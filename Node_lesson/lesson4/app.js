@@ -6,7 +6,10 @@ var eventproxy = require('eventproxy');
 var url = require('url');
 var cnodeUrl = 'https://cnodejs.org/';
 
-var app = express();
+var app = new express();
+var topicUrls = [];
+
+var ep = new eventproxy();
 
 app.get('/', function (req, res, next){
 	superagent.get('https://cnodejs.org/')
@@ -14,7 +17,7 @@ app.get('/', function (req, res, next){
 		if (err){
 			return console.error(err);
 		}
-		var topicUrls = [];
+
 		var $ = cheerio.load(sres.text);
 
 		$('#topic_list .topic_title').each(function(idx, element){
@@ -22,10 +25,34 @@ app.get('/', function (req, res, next){
 			var href = url.resolve(cnodeUrl, $element.attr('href'));
 	
 			topicUrls.push(href);
-			topicUrls.push('\n');
 		});
 
-		res.send(topicUrls);
+		console.log(topicUrls);
+
+		ep.after('topic_html', topicUrls.length, function(topics){
+			topics = topics.map(function (topicPair){
+				var topicUrl = topicPair[0];
+				var topicHtml = topicPair[1];
+				var $ = cheerio.load(topicHtml);
+				return ({
+					title: $('.topic_full_title').text().trim(),
+					href: topicUrl,
+					comment1: $('.reply_content').eq(0).text().trim(),
+				});
+			});
+
+			console.log('final:');
+			console.log(topics);
+
+			res.send(topics);
+		});
+
+		topicUrls.forEach(function (topicUrl){
+			superagent.get(topicUrl)
+			.end(function(err,res){
+				ep.emit('topic_html', [topicUrl, res.text]);
+			});
+		});
 	});
 });
 
